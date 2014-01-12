@@ -84,13 +84,21 @@ public class RobotPlayer {
 	private static void runSoldier() throws GameActionException {
 		rc.setIndicatorString(0, "Tuned to channel " + tunedChannel);
 		
-		// If standing by, pay attention to Idle Soldier Channel
+		// If nearby an enemy, shoot it
+		SoldierActions.tryToShoot(rc);
+		
 		if(tunedChannel == Comm.IDLE_SOLDIER_CHANNEL) {
+			// Wander around when idle
+			SoldierActions.wander(rc, random);
+			
+			// If standing by, pay attention to Idle Soldier Channel
 			if(rc.readBroadcast(Comm.IDLE_SOLDIER_CHANNEL) == Comm.TUNE_IN) {
 				tunedChannel = Comm.RESPONDING_SOLDIER_CHANNEL;
 				rc.broadcast(Comm.RESPONDING_SOLDIER_TALLY_CHANNEL, rc.readBroadcast(Comm.RESPONDING_SOLDIER_TALLY_CHANNEL) + 1);
 			}
+			
 		} else if(tunedChannel == Comm.RESPONDING_SOLDIER_CHANNEL) {
+			// If tuned in for command, change channel to specified band
 			tunedChannel = rc.readBroadcast(Comm.RESPONDING_SOLDIER_CHANNEL);
 		}
 	}
