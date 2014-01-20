@@ -10,6 +10,10 @@ import java.util.*;
 public class RobotPlayer {
 	static Random rand;
 	
+	static boolean rotated = false;
+	static char symmetry;
+	static byte corner = 0;
+	
 	public static void run(RobotController rc) {
 		rand = new Random();
 		Direction[] directions = {Direction.NORTH, Direction.NORTH_EAST, Direction.EAST, Direction.SOUTH_EAST, Direction.SOUTH, Direction.SOUTH_WEST, Direction.WEST, Direction.NORTH_WEST};
@@ -63,6 +67,96 @@ public class RobotPlayer {
 			}
 			
 			rc.yield();
+		}
+	}
+	
+	public static void getSymmetry(MapLocation ourBase, MapLocation opponentBase, char[][] rep)
+	{
+		boolean rot = false;
+		//sets corner
+		if(rep.length/2 > ourBase.y)
+		{
+			if(rep[0].length/2 > ourBase.x)
+				corner = 1;
+			else
+				corner = 2;
+		}
+		else
+		{
+			if(rep[0].length/2 > ourBase.x)
+				corner = 3;
+			else
+				corner = 4;
+		}
+		
+		if(ourBase.x == opponentBase.x)
+		{
+			symmetry = 'h';
+			for(int i = rep.length - 1; i > 0; i--){
+				for(int j = rep.length/2; j > 0; j--)
+				{
+					if(rep[i][j] != rep[i][rep.length - j])
+					{
+						rot = true;
+						break;
+					}
+				}
+				if(rot)
+					break;
+			}
+			rotated = rot;
+		}
+		else if(ourBase.y == opponentBase.y)
+		{
+			symmetry = 'v';
+			for(int i = rep.length - 1; i > 0; i--){
+				for(int j = rep.length/2; j > 0; j--)
+				{
+					if(rep[j][i] != rep[rep.length - j][i])
+					{
+						rot = true;
+						break;
+					}
+				}
+				if(rot)
+					break;
+			}
+			rotated = rot;
+		}
+		else{
+			if(corner == 1 || corner == 4)
+			{
+				symmetry = 'a';
+				for(int i = rep.length-1; i > 0; i--)
+				{
+					for(int j = rep.length-i; j > 0; j--)
+					{
+						if(rep[i][j] != rep[rep.length - 1 - j][rep.length - 1 - i]){
+							rot = true;
+							break;
+						}
+					}
+					if(rot)
+						break;
+				}
+				rotated = rot;
+			}
+			else{
+				symmetry = 't';
+				for(int i = rep.length-1; i > 0; i--)
+				{
+					for(int j = rep.length-1; j > i; j--)
+					{
+						if(rep[i][j] != rep[j][i]){
+							rot = true;
+							break;
+						}
+					}
+					if(rot)
+						break;
+				}
+				rotated = rot;
+			}
 		}
 	}
 }
