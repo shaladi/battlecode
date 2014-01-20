@@ -5,9 +5,9 @@ import java.util.Random;
 import battlecode.common.Direction;
 import battlecode.common.GameActionException;
 import battlecode.common.MapLocation;
+import battlecode.common.Robot;
 import battlecode.common.RobotController;
 import battlecode.common.RobotType;
-import battlecode.common.Team;
 
 public class RobotPlayer {
 	static RobotController rc;
@@ -62,13 +62,12 @@ public class RobotPlayer {
 		//MapManager.assessMap(rc);
 		//MapManager.printMap();
 		currentNumberOfSquads = 0;
-		isLeader = false;
 		rc.broadcast(Comm.IDLE_SOLDIER_CHANNEL, Comm.STANDBY);
 	}
 
 	private static void runHQ() throws GameActionException {
 		// Debug
-		rc.setIndicatorString(0, "Number of Soldiers to request: " + rc.readBroadcast(Comm.RESPONDING_SOLDIER_TALLY_CHANNEL));
+		rc.setIndicatorString(0, "Number of Squads: " + currentNumberOfSquads);
 		
 		HQActions.tryToShoot(rc);
 		
@@ -92,6 +91,7 @@ public class RobotPlayer {
 	
 	private static void runSoldier() throws GameActionException {
 		rc.setIndicatorString(0, "Tuned to channel " + tunedChannel);
+		rc.setIndicatorString(2, "Number of friendlies: " + rc.senseNearbyGameObjects(Robot.class, 2, rc.getTeam()).length);
 		
 		// If nearby an enemy, shoot it
 		SoldierActions.tryToShoot(rc);
@@ -114,20 +114,17 @@ public class RobotPlayer {
 		} else {
 			int squadNumber = tunedChannel / 100;
 			int band = squadNumber * 100;
-			int signInSubchannel = 0;
-			int commandSubchannel = 1;
-			int locationSubchannel = 2;
 			
 			// Soldier is tuned into a squad band
-			if(isOnSubchannel(signInSubchannel)) {
+			if(Comm.isOnSubchannel(tunedChannel, Comm.SIGN_IN_SUBCHANNEL)) {
 				if(rc.readBroadcast(tunedChannel) == 0) {
 					// If this squad has no leader, become the leader
 					isLeader = true;
 					rc.broadcast(tunedChannel, 1);
-					tunedChannel = band + commandSubchannel;
+					tunedChannel = band + Comm.COMMAND_SUBCHANNEL;
 					rc.broadcast(tunedChannel, Comm.STANDBY);
 				} else {
-					tunedChannel = band + commandSubchannel;
+					tunedChannel = band + Comm.COMMAND_SUBCHANNEL;
 				}
 			}
 			
@@ -144,17 +141,12 @@ public class RobotPlayer {
 					pastrsToMoveTo = rc.sensePastrLocations(rc.getTeam());
 				}
 				if(pastrsToMoveTo.length > 0) {
-					if(rc.readBroadcast(band + commandSubchannel) == Comm.STANDBY) {
+					if(rc.readBroadcast(tunedChannel) == Comm.STANDBY) {
 						// Select new target to move to
 						SoldierActions.moveToRandomPastr(rc, random, squadNumber, pastrsToMoveTo);
-					} else if(rc.readBroadcast(band + commandSubchannel) == Comm.MOVE_TO_LOCATION){
-						MapLocation target = Comm.intToLoc(rc.readBroadcast(band + locationSubchannel));
-						if(isValidPastr(target, rc.getTeam().opponent())) {
-							// Continue move command to target
-							SoldierActions.moveToLocation(rc, squadNumber, target);
-						} else {
-							SoldierActions.issueStandbyCommand(rc, squadNumber);
-						}
+					} else if(rc.readBroadcast(tunedChannel) == Comm.MOVE_TO_LOCATION){
+						// Verify existing move command
+						SoldierActions.verifyStandingPastrMove(rc, squadNumber, band);
 					}
 				} else {
 					SoldierActions.wander(rc, random);
@@ -162,43 +154,27 @@ public class RobotPlayer {
 				}
 			} else {
 				// Follower strategy
-				if(random.nextDouble() < 0.01) {
-					if(rc.isActive()) {
-						rc.construct(RobotType.PASTR);
+//				if(random.nextDouble() < 0.01) {
+//					if(rc.isActive()) {
+//						rc.construct(RobotType.PASTR);
+//					}
+//				}
+				if(Comm.isOnSubchannel(tunedChannel, Comm.COMMAND_SUBCHANNEL)) {
+					if(rc.readBroadcast(tunedChannel) == Comm.STANDBY) {
+						// Do nothing
+					} else if(rc.readBroadcast(tunedChannel) == Comm.MOVE_TO_LOCATION) {
+						tunedChannel = band + Comm.LOCATION_SUBCHANNEL;
 					}
-				} else {
-					if(isOnSubchannel(commandSubchannel)) {
-						if(rc.readBroadcast(tunedChannel) == Comm.STANDBY) {
-							// Do nothing
-						} else if(rc.readBroadcast(tunedChannel) == Comm.MOVE_TO_LOCATION) {
-							tunedChannel = band + locationSubchannel;
-						}
-					} else if(isOnSubchannel(locationSubchannel)) {
-						int channelData = rc.readBroadcast(band + locationSubchannel);
-						if(channelData != Comm.END_OF_COMMAND) {
-							MapLocation target = Comm.intToLoc(channelData);
-							SoldierActions.moveToLocation(rc, squadNumber, target);
-						}
+				} else if(Comm.isOnSubchannel(tunedChannel, Comm.LOCATION_SUBCHANNEL)) {
+					int channelData = rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL);
+					if(channelData != Comm.END_OF_COMMAND) {
+						MapLocation target = Comm.intToLoc(channelData);
+						SoldierActions.moveToLocation(rc, target);
+					} else {
+						tunedChannel = band + Comm.COMMAND_SUBCHANNEL;
 					}
 				}
 			}
 		}
-	}
-	
-	/**
-	 * @param subchannel The subchannel within the current band to check
-	 * @return Whether or not the player is tuned to the subchannel specified
-	 */
-	private static boolean isOnSubchannel(int subchannel) {
-		return ((tunedChannel - subchannel) % 100 == 0);
-	}
-	
-	private static boolean isValidPastr(MapLocation location, Team team) {
-		for(MapLocation pastrLocation : rc.sensePastrLocations(team)) {
-			if (pastrLocation.equals(location)) {
-				return true;
-			}
-		}
-		return false;
 	}
 }

@@ -9,6 +9,7 @@ import battlecode.common.Robot;
 import battlecode.common.RobotController;
 import battlecode.common.RobotInfo;
 import battlecode.common.RobotType;
+import battlecode.common.Team;
 
 /**
  * This class contains static methods for soldier actions
@@ -29,12 +30,35 @@ public class SoldierActions {
 		// Look if any enemies are nearby
 		Robot[] enemyRobots = rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam().opponent());
 		
-		// Shoot at all nearby enemies
+		// Suicide if outnumbered and alone
+		if(rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam()).length == 0 && enemyRobots.length > 0) {
+			double totalEnemyHealth = 0;
+			for(Robot enemy : enemyRobots) {
+				totalEnemyHealth += rc.senseRobotInfo(enemy).health;
+			}
+			if(totalEnemyHealth > rc.getHealth()) {
+				SoldierActions.moveToLocation(rc, rc.senseRobotInfo(enemyRobots[0]).location);
+				if(rc.senseNearbyGameObjects(Robot.class, 2, rc.getTeam().opponent()).length > 0) {
+					// Bid fairwell, cruel world
+					rc.selfDestruct();
+				}
+			}
+			return;
+		}
+		
+		
+		// Shoot enemy with lowest HP
+		RobotInfo lowestHPEnemyInfo = null;
+		double lowestHP = 200;
 		for(Robot enemy : enemyRobots) {
 			RobotInfo enemyInfo = rc.senseRobotInfo(enemy);
-			if(rc.isActive() && enemyInfo.type != RobotType.HQ) {
-				rc.attackSquare(rc.senseRobotInfo(enemy).location);
+			if(enemyInfo.health <= lowestHP) {
+				lowestHP = enemyInfo.health;
+				lowestHPEnemyInfo = enemyInfo;
 			}
+		}
+		if(rc.isActive() && lowestHPEnemyInfo != null && lowestHPEnemyInfo.type != RobotType.HQ) {
+			rc.attackSquare(lowestHPEnemyInfo.location);
 		}
 	}
 	
@@ -56,17 +80,10 @@ public class SoldierActions {
 		rc.broadcast(locationChannel, Comm.END_OF_COMMAND);
 	}
 	
-	public static void moveToLocation(RobotController rc, int squadNumber, MapLocation location) throws GameActionException {
+	public static void moveToLocation(RobotController rc, MapLocation location) throws GameActionException {
 		rc.setIndicatorString(1, "Trying to move to " + location);
 		if(rc.isActive()) {
 			Direction directionToMove = rc.getLocation().directionTo(location);
-//			for(int i = 0; i < 8; i++) {
-//				if(rc.canMove(directionToMove)) {
-//					rc.move(directionToMove);
-//					break;
-//				}
-//				directionToMove = directionToMove.rotateRight();
-//			}
 			BasicPathing.tryToMove(directionToMove, true, rc);
 		}
 	}
@@ -74,7 +91,25 @@ public class SoldierActions {
 	public static void moveToRandomPastr(RobotController rc, Random random, int squadNumber, MapLocation[] pastrs) throws GameActionException {
 		MapLocation target = pastrs[random.nextInt(pastrs.length)];
 		SoldierActions.issueMoveCommand(rc, squadNumber, target);
-		SoldierActions.moveToLocation(rc, squadNumber, target);
+		SoldierActions.moveToLocation(rc, target);
+	}
+	
+	public static void verifyStandingPastrMove(RobotController rc, int squadNumber, int band) throws GameActionException {
+		MapLocation target = Comm.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
+		if(SoldierActions.isValidPastr(rc, target, rc.getTeam().opponent())) {
+			// Continue move command to target
+			SoldierActions.moveToLocation(rc, target);
+		} else {
+			SoldierActions.issueStandbyCommand(rc, squadNumber);
+		}
 	}
 
+	private static boolean isValidPastr(RobotController rc, MapLocation location, Team team) {
+		for(MapLocation pastrLocation : rc.sensePastrLocations(team)) {
+			if (pastrLocation.equals(location)) {
+				return true;
+			}
+		}
+		return false;
+	}
 }
