@@ -28,37 +28,42 @@ public class SoldierActions {
 	
 	public static void tryToShoot(RobotController rc) throws GameActionException {
 		// Look if any enemies are nearby
-		Robot[] enemyRobots = rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam().opponent());
+		Robot[] enemyRobots = rc.senseNearbyGameObjects(Robot.class, rc.getType().sensorRadiusSquared, rc.getTeam().opponent());
 		
-		// Suicide if outnumbered and alone
-		if(rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam()).length == 0 && enemyRobots.length > 0) {
-			double totalEnemyHealth = 0;
+		if(enemyRobots.length > 0) {
+			RobotInfo closestEnemyInfo = null;
+			double closestEnemyDistance = 10000;
+			double totalEnemyHP = 0;
+			// Find enemy with lowest HP
 			for(Robot enemy : enemyRobots) {
-				totalEnemyHealth += rc.senseRobotInfo(enemy).health;
-			}
-			if(totalEnemyHealth > rc.getHealth()) {
-				SoldierActions.moveToLocation(rc, rc.senseRobotInfo(enemyRobots[0]).location);
-				if(rc.senseNearbyGameObjects(Robot.class, 2, rc.getTeam().opponent()).length > 0) {
-					// Bid fairwell, cruel world
-					rc.selfDestruct();
+				RobotInfo enemyInfo = rc.senseRobotInfo(enemy);
+				int distanceToEnemy = rc.getLocation().distanceSquaredTo(enemyInfo.location);
+				if(enemyInfo.type != RobotType.HQ && distanceToEnemy <= closestEnemyDistance) {
+					closestEnemyDistance = distanceToEnemy;
+					closestEnemyInfo = enemyInfo;
+					totalEnemyHP += enemyInfo.health;
 				}
 			}
-			return;
-		}
-		
-		
-		// Shoot enemy with lowest HP
-		RobotInfo lowestHPEnemyInfo = null;
-		double lowestHP = 200;
-		for(Robot enemy : enemyRobots) {
-			RobotInfo enemyInfo = rc.senseRobotInfo(enemy);
-			if(enemyInfo.health <= lowestHP) {
-				lowestHP = enemyInfo.health;
-				lowestHPEnemyInfo = enemyInfo;
+			if(closestEnemyInfo != null) {
+				if(rc.isActive()) {
+					if(rc.canAttackSquare(closestEnemyInfo.location)) {
+						if(rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam()).length == 0 && rc.getHealth() < totalEnemyHP) {
+							// Suicide if outnumbered and alone
+							if(rc.getLocation().distanceSquaredTo(closestEnemyInfo.location) <= 2) {
+								rc.selfDestruct();
+							} else {
+								SoldierActions.moveToLocation(rc, closestEnemyInfo.location);
+							}
+						} else {
+							// Attack the enemy
+							rc.attackSquare(closestEnemyInfo.location);
+						}
+					} else {
+						// Move toward enemy
+						SoldierActions.moveToLocation(rc, closestEnemyInfo.location);
+					}
+				}
 			}
-		}
-		if(rc.isActive() && lowestHPEnemyInfo != null && lowestHPEnemyInfo.type != RobotType.HQ) {
-			rc.attackSquare(lowestHPEnemyInfo.location);
 		}
 	}
 	
@@ -96,7 +101,7 @@ public class SoldierActions {
 	
 	public static void verifyStandingPastrMove(RobotController rc, int squadNumber, int band) throws GameActionException {
 		MapLocation target = Comm.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
-		if(SoldierActions.isValidPastr(rc, target, rc.getTeam().opponent())) {
+		if(SoldierActions.isValidPastr(rc, target, rc.getTeam().opponent()) || SoldierActions.isValidPastr(rc, target, rc.getTeam())) {
 			// Continue move command to target
 			SoldierActions.moveToLocation(rc, target);
 		} else {
