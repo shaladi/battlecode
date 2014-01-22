@@ -94,10 +94,11 @@ public class RobotPlayer {
 	}
 	
 	private static void runSoldier() throws GameActionException {
+		int band = (tunedChannel / 100) * 100;
 		rc.setIndicatorString(0, "Tuned to channel " + tunedChannel);
 		
 		// If nearby an enemy, shoot it
-		SoldierActions.tryToShoot(rc);
+		SoldierActions.combatStrategy(rc, band);
 		
 		if(tunedChannel == Comm.IDLE_SOLDIER_CHANNEL) {
 			// If standing by, pay attention to Idle Soldier Channel
@@ -115,8 +116,6 @@ public class RobotPlayer {
 				tunedChannel = Comm.IDLE_SOLDIER_CHANNEL;
 			}
 		} else {
-			int band = (tunedChannel / 100) * 100;
-			
 			// Soldier is tuned into a squad band
 			if(Comm.isOnSubchannel(tunedChannel, Comm.SIGN_IN_SUBCHANNEL)) {
 				if(rc.readBroadcast(tunedChannel) == 0) {
@@ -137,39 +136,70 @@ public class RobotPlayer {
 			 *      If we have none, wander around, search for enemies to attack
 			 */
 			if(isLeader) {
+				// Leader Strategy
 				SoldierActions.broadcastVitality(rc, band);
 				
-				MapLocation[] pastrsToMoveTo = rc.sensePastrLocations(rc.getTeam().opponent());
-				if(pastrsToMoveTo.length == 0) {
-					// If no enemy PASTRs, move to protect our PASTRs
-					pastrsToMoveTo = rc.sensePastrLocations(rc.getTeam());
-				}
-				if(pastrsToMoveTo.length > 0) {
-					if(rc.readBroadcast(tunedChannel) == Comm.STANDBY) {
-						// Select new target to move to
-						SoldierActions.moveToRandomPastr(rc, random, band, pastrsToMoveTo);
-					} else if(rc.readBroadcast(tunedChannel) == Comm.MOVE_TO_LOCATION){
-						// Verify existing move command
-						SoldierActions.verifyStandingPastrMove(rc, band);
-					}
+				if(SoldierActions.isDistressSignal(rc, band)) {
+					rc.setIndicatorString(1, "Answering Distress Signal");
+					SoldierActions.answerDistressSignal(rc, band);
 				} else {
-					SoldierActions.wander(rc, random);
-					SoldierActions.issueMoveCommand(rc, band, rc.getLocation());
+					int outstandingCommand = rc.readBroadcast(tunedChannel);
+					rc.setIndicatorString(1, "Current Command: " + outstandingCommand);
+
+					MapLocation[] pastrsToMoveTo = rc.sensePastrLocations(rc.getTeam().opponent());
+					if(pastrsToMoveTo.length == 0) {
+						// If no enemy PASTRs, move to protect our PASTRs
+						pastrsToMoveTo = rc.sensePastrLocations(rc.getTeam());
+					}
+					if(pastrsToMoveTo.length > 0) {
+						if(outstandingCommand == Comm.STANDBY) {
+							// Select new target to move to
+							SoldierActions.moveToRandomPastr(rc, random, band, pastrsToMoveTo);
+						} else if(outstandingCommand == Comm.MOVE_TO_PASTR){
+							// Verify existing move command
+							SoldierActions.verifyStandingPastrMove(rc, band);
+						} else if(outstandingCommand == Comm.MOVE_TO_LOCATION) {
+							// Verify if at target
+							SoldierActions.verifyStandingMove(rc, band);
+						} else if(outstandingCommand == Comm.FOLLOW_THE_LEADER) {
+							// Select new target to move to
+							SoldierActions.moveToRandomPastr(rc, random, band, pastrsToMoveTo);
+						}
+					} else {
+						if(outstandingCommand == Comm.STANDBY) {
+							// Wander
+							SoldierActions.wander(rc, random);
+							SoldierActions.issueFollowMeCommand(rc, band);
+						} else if(outstandingCommand == Comm.MOVE_TO_PASTR){
+							// Wander
+							SoldierActions.wander(rc, random);
+							SoldierActions.issueFollowMeCommand(rc, band);
+						} else if(outstandingCommand == Comm.MOVE_TO_LOCATION) {
+							// Verify if at target
+							SoldierActions.verifyStandingMove(rc, band);
+						} else if(outstandingCommand == Comm.FOLLOW_THE_LEADER) {
+							// Wander
+							SoldierActions.wander(rc, random);
+							SoldierActions.updateFollowMeCommand(rc, band);
+						}
+					}	
 				}
 			} else {
 				// Follower strategy
 				// Check if leader is alive
 				if(SoldierActions.isLeaderAlive(rc, band)) {
 					if(Comm.isOnSubchannel(tunedChannel, Comm.COMMAND_SUBCHANNEL)) {
-						if(rc.readBroadcast(tunedChannel) == Comm.STANDBY) {
+						int command = rc.readBroadcast(tunedChannel);
+						if(command == Comm.STANDBY) {
 							// Do nothing
-						} else if(rc.readBroadcast(tunedChannel) == Comm.MOVE_TO_LOCATION) {
+						} else if(command == Comm.MOVE_TO_PASTR || command == Comm.MOVE_TO_LOCATION || command == Comm.FOLLOW_THE_LEADER) {
 							tunedChannel = band + Comm.LOCATION_SUBCHANNEL;
 						}
 					} else if(Comm.isOnSubchannel(tunedChannel, Comm.LOCATION_SUBCHANNEL)) {
 						int channelData = rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL);
 						if(channelData != Comm.END_OF_COMMAND) {
 							MapLocation target = Comm.intToLoc(channelData);
+							rc.setIndicatorString(1, "Moving to " + target);
 							SoldierActions.moveToLocation(rc, target);
 						} else {
 							tunedChannel = band + Comm.COMMAND_SUBCHANNEL;

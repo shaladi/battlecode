@@ -8,10 +8,12 @@ public class Comm {
 	public static int TUNE_IN = -9998;
 	
 	// Responding Soldier Channel Commands
-	public static int MOVE_TO_LOCATION = -9997;
+	public static int MOVE_TO_PASTR = -9997;
 	public static int BUILD_PASTR = -9996;
 	public static int BUILD_TOWER = -9995;
 	public static int END_OF_COMMAND = -9994;
+	public static int MOVE_TO_LOCATION = -9993;
+	public static int FOLLOW_THE_LEADER = -9992;
 	
 	public static final int IDLE_SOLDIER_CHANNEL = 50; // Channel that idle soldiers will listen to for a command
 	public static final int RESPONDING_SOLDIER_CHANNEL = 51; // Channel that directs soldiers to tune to a specific band
@@ -22,6 +24,7 @@ public class Comm {
 	public static final int COMMAND_SUBCHANNEL = 1;
 	public static final int LOCATION_SUBCHANNEL = 2;
 	public static final int VITALITY_SUBCHANNEL = 3;
+	public static final int DISTRESS_SUBCHANNEL = 4;
 	
 	public static int locToInt(MapLocation m){
 		return (m.x*100 + m.y);
