@@ -2,6 +2,7 @@ package barnabasTheDevastator;
 
 import java.util.Random;
 
+import battlecode.common.Clock;
 import battlecode.common.Direction;
 import battlecode.common.GameActionException;
 import battlecode.common.MapLocation;
@@ -26,7 +27,7 @@ public class SoldierActions {
 		}
 	}
 	
-	public static void tryToShoot(RobotController rc) throws GameActionException {
+	public static void combatStrategy(RobotController rc, int band) throws GameActionException {
 		// Look if any enemies are nearby
 		Robot[] enemyRobots = rc.senseNearbyGameObjects(Robot.class, rc.getType().sensorRadiusSquared, rc.getTeam().opponent());
 		
@@ -48,8 +49,10 @@ public class SoldierActions {
 				if(rc.isActive()) {
 					if(rc.canAttackSquare(closestEnemyInfo.location)) {
 						if(rc.senseNearbyGameObjects(Robot.class, rc.getType().attackRadiusMaxSquared, rc.getTeam()).length == 0 && rc.getHealth() < totalEnemyHP) {
-							// Suicide if outnumbered and alone
+							// Send distress signal
+							SoldierActions.sendDistressSignal(rc, band);
 							if(rc.getLocation().distanceSquaredTo(closestEnemyInfo.location) <= 2) {
+								// Suicide if outnumbered and alone
 								rc.selfDestruct();
 							} else {
 								SoldierActions.moveToLocation(rc, closestEnemyInfo.location);
@@ -67,17 +70,31 @@ public class SoldierActions {
 		}
 	}
 	
-	public static void issueMoveCommand(RobotController rc, int squadNumber, MapLocation location) throws GameActionException {
-		int band = squadNumber * 100;
+	public static void issueMoveToPastrCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
 		int commandChannel = band + 1;
 		int locationChannel = band + 2;
+		
+		// Cancel outstanding commands
+		SoldierActions.issueStandbyCommand(rc, band);
+		rc.yield();
+		
+		rc.broadcast(commandChannel, Comm.MOVE_TO_PASTR);
+		rc.broadcast(locationChannel, Comm.locToInt(location));
+	}
+	
+	public static void issueMoveToLocationCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
+		int commandChannel = band + 1;
+		int locationChannel = band + 2;
+		
+		// Cancel outstanding commands
+		SoldierActions.issueStandbyCommand(rc, band);
+		rc.yield();
 		
 		rc.broadcast(commandChannel, Comm.MOVE_TO_LOCATION);
 		rc.broadcast(locationChannel, Comm.locToInt(location));
 	}
 	
-	public static void issueStandbyCommand(RobotController rc, int squadNumber) throws GameActionException {
-		int band = squadNumber * 100;
+	public static void issueStandbyCommand(RobotController rc, int band) throws GameActionException {
 		int commandChannel = band + 1;
 		int locationChannel = band + 2;
 		
@@ -85,8 +102,25 @@ public class SoldierActions {
 		rc.broadcast(locationChannel, Comm.END_OF_COMMAND);
 	}
 	
+	public static void issueFollowMeCommand(RobotController rc, int band) throws GameActionException {
+		int commandChannel = band + 1;
+		int locationChannel = band + 2;
+		
+		// Cancel outstanding commands
+		SoldierActions.issueStandbyCommand(rc, band);
+		rc.yield();
+		
+		rc.broadcast(commandChannel, Comm.FOLLOW_THE_LEADER);
+		rc.broadcast(locationChannel, Comm.locToInt(rc.getLocation()));
+	}
+	
+	public static void updateFollowMeCommand(RobotController rc, int band) throws GameActionException {
+		int locationChannel = band + 2;
+		
+		rc.broadcast(locationChannel, Comm.locToInt(rc.getLocation()));
+	}
+	
 	public static void moveToLocation(RobotController rc, MapLocation location) throws GameActionException {
-		rc.setIndicatorString(1, "Trying to move to " + location);
 		if(rc.isActive()) {
 			Direction directionToMove = rc.getLocation().directionTo(location);
 			BasicPathing.tryToMove(directionToMove, true, rc);
@@ -95,17 +129,28 @@ public class SoldierActions {
 	
 	public static void moveToRandomPastr(RobotController rc, Random random, int squadNumber, MapLocation[] pastrs) throws GameActionException {
 		MapLocation target = pastrs[random.nextInt(pastrs.length)];
-		SoldierActions.issueMoveCommand(rc, squadNumber, target);
+		SoldierActions.issueMoveToPastrCommand(rc, squadNumber, target);
 		SoldierActions.moveToLocation(rc, target);
 	}
 	
-	public static void verifyStandingPastrMove(RobotController rc, int squadNumber, int band) throws GameActionException {
+	public static void verifyStandingPastrMove(RobotController rc, int band) throws GameActionException {
 		MapLocation target = Comm.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
 		if(SoldierActions.isValidPastr(rc, target, rc.getTeam().opponent()) || SoldierActions.isValidPastr(rc, target, rc.getTeam())) {
 			// Continue move command to target
 			SoldierActions.moveToLocation(rc, target);
 		} else {
-			SoldierActions.issueStandbyCommand(rc, squadNumber);
+			SoldierActions.issueStandbyCommand(rc, band);
+		}
+	}
+	
+	public static void verifyStandingMove(RobotController rc, int band) throws GameActionException {
+		MapLocation target = Comm.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
+		MapLocation currentLocation = rc.getLocation();
+		if(currentLocation.equals(target) || currentLocation.isAdjacentTo(target)) {
+			SoldierActions.issueStandbyCommand(rc, band);
+		} else {
+			// Continue move command to target
+			SoldierActions.moveToLocation(rc, target);
 		}
 	}
 
@@ -116,5 +161,42 @@ public class SoldierActions {
 			}
 		}
 		return false;
+	}
+	
+	public static void broadcastVitality(RobotController rc, int band) throws GameActionException {
+		int vitalityChannel = band + Comm.VITALITY_SUBCHANNEL;
+		rc.broadcast(vitalityChannel, Clock.getRoundNum());
+	}
+	
+	public static boolean isLeaderAlive(RobotController rc, int band) throws GameActionException {
+		int vitalityChannel = band + Comm.VITALITY_SUBCHANNEL;
+		int roundsSinceLastVitalityBroadcast = Clock.getRoundNum() - rc.readBroadcast(vitalityChannel);
+		return roundsSinceLastVitalityBroadcast <= 5;
+	}
+	
+	public static void sendDistressSignal(RobotController rc, int band) throws GameActionException {
+		int distressChannel = band + Comm.DISTRESS_SUBCHANNEL;
+		rc.broadcast(distressChannel, Comm.locToInt(rc.getLocation()));
+	}
+	
+	public static boolean isDistressSignal(RobotController rc, int band) throws GameActionException {
+		int distressChannel = band + Comm.DISTRESS_SUBCHANNEL;
+		return rc.readBroadcast(distressChannel) != 0;
+	}
+	
+	public static void answerDistressSignal(RobotController rc, int band) throws GameActionException {
+		int distressChannel = band + Comm.DISTRESS_SUBCHANNEL;
+		MapLocation locationOfDistress = Comm.intToLoc(rc.readBroadcast(distressChannel));
+		
+		// Clear distress signal
+		rc.broadcast(distressChannel, 0);
+		
+		// Cancel all outstanding commands
+		SoldierActions.issueStandbyCommand(rc, band);
+		rc.yield();
+		
+		// Move to location of distress
+		SoldierActions.issueMoveToLocationCommand(rc, band, locationOfDistress);
+		SoldierActions.moveToLocation(rc, locationOfDistress);
 	}
 }

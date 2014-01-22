@@ -1,5 +1,6 @@
 package barnabasTheDevastator;
 
+import battlecode.common.Clock;
 import battlecode.common.Direction;
 import battlecode.common.GameActionException;
 import battlecode.common.GameConstants;
@@ -46,5 +47,21 @@ public class HQActions {
 				rc.attackSquare(rc.senseRobotInfo(enemy).location);
 			}
 		}
+	}
+	
+	private static boolean isSquadActive(RobotController rc, int squadNumber) throws GameActionException {
+		int vitalityChannel = (squadNumber * 100) + Comm.VITALITY_SUBCHANNEL;
+		int roundsSinceLastVitalityBroadcast = Clock.getRoundNum() - rc.readBroadcast(vitalityChannel);
+		return roundsSinceLastVitalityBroadcast <= 5;
+	}
+	
+	public static int numberOfActiveSquads(RobotController rc, int numberOfSpawnedSquads) throws GameActionException {
+		int numberOfActiveSquads = 0;
+		for(int i = numberOfSpawnedSquads; i > 0; i--) {
+			if(isSquadActive(rc, i)) {
+				numberOfActiveSquads++;
+			}
+		}
+		return numberOfActiveSquads;
 	}
 }
