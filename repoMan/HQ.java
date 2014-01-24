@@ -15,11 +15,44 @@ public class HQ{
 	//This function will spawn a soldier in the first possible direction.
 	public static void tryToSpawn(RobotController rc) throws GameActionException{
 		for(Direction dir:Direction.values()){
-			if(rc.senseRobotCount() < GameConstants.MAX_ROBOTS && rc.isActive() && rc.canMove(dir)){
+			if(rc.senseRobotCount() < GameConstants.MAX_ROBOTS && rc.isActive() && Soldier.canMove(rc,dir)){
 				rc.spawn(dir);
 				break;
 			}
 			
+		}
+	}
+	
+	//This function will set people in panic if needed.
+	
+	public static void shouldWeAllpanicOrRush(RobotController rc) throws GameActionException {
+		boolean panic = false;
+		boolean rush = false;
+		
+		//panic and be agressive if the enemy has more milk and there's not enough time to stop them. 
+		double ourMilk = rc.senseTeamMilkQuantity(rc.getTeam());
+		double enemyMilk = rc.senseTeamMilkQuantity(rc.getTeam().opponent());
+		double roundNum = Clock.getRoundNum();
+		if(enemyMilk > 8000000){
+			panic = true;
+		}else if(roundNum > 1650 && enemyMilk > ourMilk){
+			panic = true;
+		}else if(ourMilk > 7500000 && enemyMilk < 5000000){
+			rush = true;
+		}else{
+			rc.setIndicatorString(2, "Okay, Nothing Now.");
+			rc.broadcast(Comm.PANIC_CHANNEL, 0);
+			rc.broadcast(Comm.RUSH_CHANNEL, 0);
+		}
+		if(panic){
+			rc.setIndicatorString(2, "PANIC!!!!!!");
+			rc.broadcast(Comm.PANIC_CHANNEL, 1);
+			RobotPlayer.panic = true;
+		}
+		if(rush){
+			rc.setIndicatorString(2, "Rush To The End");
+			rc.broadcast(Comm.RUSH_CHANNEL, 1);
+			RobotPlayer.rush = true;
 		}
 	}
 	
@@ -35,7 +68,7 @@ public class HQ{
 		}
 	}
 	
-	public static void createNewSquad(RobotController rc, int squadSize, int squadNumber) throws GameActionException {
+public static void createNewSquad(RobotController rc, int squadSize, int squadNumber) throws GameActionException {
 		
 		// Tell idle soldiers to pay attention
 		rc.broadcast(Comm.IDLE_SOLDIER_CHANNEL, Comm.TUNE_IN);
@@ -45,13 +78,17 @@ public class HQ{
 		
 		// Tell only squadSize # of idle soldiers to join squad
 		rc.broadcast(Comm.RESPONDING_SOLDIER_TALLY_CHANNEL, squadSize);
+		
+		// Initialize the squad's HQ Command Channel to standby
+		int squadHQCommandChannel = (squadNumber * 100) + Comm.HQ_COMMAND_SUBCHANNEL;
+		rc.broadcast(squadHQCommandChannel, Comm.STANDBY);
 	}
 
 
 	public static void buildNewPastr(RobotController rc, int index) throws GameActionException {
 				
 				//Get noise tower location
-				MapLocation loc = MapManager.goodPastrLocations[index];
+				MapLocation loc = MapManager.goodPastrLocations.get(index);
 				for(int i=0; i<8; i++){
 					MapLocation noiseLoc = loc.add(Direction.values()[i]);
 					if(!rc.senseTerrainTile(noiseLoc).equals(TerrainTile.VOID) && !rc.senseTerrainTile(noiseLoc).equals(TerrainTile.OFF_MAP)){
@@ -61,7 +98,7 @@ public class HQ{
 				}		
 				// Send out location where to build pastr
 				rc.broadcast(Comm.BUILD_PASTR_CHANNEL, 1);
-				rc.broadcast(Comm.GOOD_PASTR_CHANNEL, VectorActions.locToInt(MapManager.goodPastrLocations[index]));
+				rc.broadcast(Comm.GOOD_PASTR_CHANNEL, VectorActions.locToInt(MapManager.goodPastrLocations.get(index)));
 				rc.broadcast(Comm.GOOD_NOISE_CHANNEL, VectorActions.locToInt(loc));
 		
 	}
@@ -82,9 +119,17 @@ public class HQ{
 		return numberOfActiveSquads;
 	}
 	
-	
-	
-	
+	public static void issueSquadMoveCommand(RobotController rc, int numberOfSquads, MapLocation location) throws GameActionException {
+		// Issue command to all squads
+		for(int squadNumber = numberOfSquads; squadNumber > 0; squadNumber--) {
+			int squadBand = squadNumber * 100;
+			int squadHQCommandChannel = squadBand + Comm.HQ_COMMAND_SUBCHANNEL;
+			int squadHQLocationChannel = squadBand + Comm.HQ_LOCATION_SUBCHANNEL;
+			rc.broadcast(squadHQCommandChannel, Comm.ALL_SQUADS_TO_LOCATION);
+			rc.broadcast(squadHQLocationChannel, VectorActions.locToInt(location));
+		}
+	}
+
 	
 	
 }

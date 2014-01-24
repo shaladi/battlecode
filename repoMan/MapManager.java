@@ -1,8 +1,15 @@
 package repoMan;
 
+//import java.util.ArrayList;
+
+import java.util.ArrayList;
+
+import battlecode.common.Direction;
 import battlecode.common.MapLocation;
 import battlecode.common.RobotController;
+import battlecode.common.RobotType;
 import battlecode.common.TerrainTile;
+//import battlecode.common.Direction;
 
 public class MapManager{
 	public static TerrainTile[][] map;
@@ -14,7 +21,7 @@ public class MapManager{
 	public static int mapHeight;
 	public static MapLocation HQLoc;
 	public static MapLocation enemyHQLoc;
-	public static MapLocation[] goodPastrLocations;
+	public static ArrayList<MapLocation> goodPastrLocations;
 	
 	
 	
@@ -37,6 +44,26 @@ public class MapManager{
 		}
 	}
 	
+	//This function creates pseudo voids around HQ to avoid missile fires.
+//	
+//	public static void voidEnemyHQ(RobotController rc){
+//		int rad = rc.getType().attackRadiusMaxSquared;
+//		ArrayList<MapLocation> voids = new ArrayList<MapLocation>();
+//		voids.add(enemyHQLoc);
+//		map[enemyHQLoc.x][enemyHQLoc.y] = TerrainTile.OFF_MAP;
+//		while(voids.size()>0){
+//			MapLocation cell = voids.remove(0);
+//			for(int i=0; i<8; i++){
+//				MapLocation consider = cell.add(Direction.values()[i]);
+//				if(consider.distanceSquaredTo(enemyHQLoc)<rad && !(map[consider.x][consider.y].equals(TerrainTile.VOID) | map[consider.x][consider.y].equals(TerrainTile.OFF_MAP))){
+//					map[consider.x][consider.y] = TerrainTile.VOID;
+//					voids.add(consider);
+//				}
+//				
+//			}
+//		}
+//	}
+//	
 	
 	//This function calculates the best positions to build pastures.
 	
@@ -46,7 +73,8 @@ public class MapManager{
 		double distanceToEnemy = HQLoc.distanceSquaredTo(enemyHQLoc);
 		double penality = 10.0/(distanceToEnemy/2.0);
 		double[] values = {0,0,0,0};
-		goodPastrLocations = new MapLocation[4];
+		goodPastrLocations = new ArrayList<MapLocation>();
+		double nearHQCount = 0;
 		for(int startx=0; startx < mapWidth; startx += 5){
 			for(int starty=0; starty < mapHeight; starty+=5){
 				MapLocation startLoc = new MapLocation(startx, starty);
@@ -57,6 +85,9 @@ public class MapManager{
 						MapLocation loc = new MapLocation(startx+x, starty+y);
 						if(loc.x < mapWidth && loc.y < mapHeight && myTerritory[loc.x][loc.y]){
 							currentCount += cowGrowth[loc.x][loc.y];
+							if(loc.distanceSquaredTo(HQLoc) <= RobotType.HQ.sensorRadiusSquared){
+								nearHQCount += cowGrowth[loc.x][loc.y];
+							}
 							if(bestLoc==null){
 								if(!map[loc.x][loc.y].equals(TerrainTile.VOID)){
 									bestLoc = loc;
@@ -68,12 +99,18 @@ public class MapManager{
 				if (currentCount > 0){
 					for(int x=0; x<4; x++){
 						if(currentCount > values[x]){
-							for(int y=2; y>=x; y--){
-								values[y+1] = values[y];
-								goodPastrLocations[y+1] = goodPastrLocations[y];
-							}
 							values[x] = currentCount;
-							goodPastrLocations[x] = bestLoc;
+							goodPastrLocations.add(x, bestLoc);
+							break;
+						}
+					}
+				}
+			//This would be a nifty little tricky place to build a pastr since hq can offer protection.	
+				if(nearHQCount > 5){
+					for(int i=0; i<8; i++){
+						MapLocation loc = HQLoc.add(Direction.values()[i]);
+						if(!(map[loc.x][loc.y].equals(TerrainTile.VOID) || map[loc.x][loc.y].equals(TerrainTile.OFF_MAP))){
+							goodPastrLocations.add(0, loc);
 							break;
 						}
 					}

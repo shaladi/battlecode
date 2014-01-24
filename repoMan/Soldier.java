@@ -16,14 +16,22 @@ public class Soldier{
 
 	public static final int squadSize = 5;
 
-	//TODO: later on change from random to prefer squares with high cow content. (or herd to one locaion and stand on it.)
+	//TODO: later on change from random to prefer squares with high cow content. (or herd to one location and stand on it.)
 	public static void wander(RobotController rc, Random random) throws GameActionException {
 		if(rc.isActive()) {
 			Direction chosenDirection = Direction.values()[random.nextInt(8)];
-			if(rc.canMove(chosenDirection)) {
+			
+			double cows = rc.senseCowsAtLocation(rc.getLocation());
+			float prob = (float) Math.exp(-cows/100.0);
+			rc.setIndicatorString(2, "Cows are: " + cows + " Prob of moving is: " + prob );
+			if(random.nextFloat() < prob && canMove(rc, chosenDirection)) {
 				rc.sneak(chosenDirection);
 			}
 		}
+	}
+
+	public static boolean canMove(RobotController rc, Direction dir){
+		return (rc.canMove(dir) && rc.getLocation().add(dir).distanceSquaredTo(rc.senseEnemyHQLocation()) > RobotType.HQ.attackRadiusMaxSquared);
 	}
 
 	public static boolean nearEnemies(RobotController rc){
@@ -95,7 +103,7 @@ public class Soldier{
 							Soldier.sendDistressSignal(rc, band);
 
 							Direction retreatDir = rc.getLocation().directionTo(enemyToAttack.location).opposite();
-							if(alliedHealth > totalEnemyHP && rc.getHealth() > 50 && rc.canMove(retreatDir)){
+							if(alliedHealth > totalEnemyHP && rc.getHealth() > 50 && canMove(rc, retreatDir)){
 								// If you have enough health, and there's hope for you, Retreat in opposite direction.
 								rc.move(retreatDir);
 							}
@@ -122,8 +130,17 @@ public class Soldier{
 						}
 					} else {
 						//TODO: when in combat, perhaps a simple move command will do. To reduce bytecode usage.
-						//Move toward enemy
-						Soldier.moveToLocation(rc, enemyToAttack.location, random, false);
+						//Move toward enemy (if pastr)
+						
+						if(enemyToAttack.type == RobotType.PASTR || enemyToAttack.type == RobotType.NOISETOWER || RobotPlayer.panic){
+							Soldier.moveToLocation(rc, enemyToAttack.location, random, false);
+						}else{
+							MapLocation oneCloser = rc.getLocation().add(rc.getLocation().directionTo(enemyToAttack.location));
+							if(oneCloser.distanceSquaredTo(enemyToAttack.location)>enemyToAttack.type.attackRadiusMaxSquared){
+								Soldier.moveToLocation(rc, oneCloser, random, false);
+						}
+							
+						}
 						//BasicPathing.simplemove(rc, enemyToAttack.location);
 					}
 				}
@@ -131,25 +148,25 @@ public class Soldier{
 		}
 	}
 
-	public static void issueMoveToPastrCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
+	public static void issueMoveToEnemyPastrCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
 		int commandChannel = band + 1;
 		int locationChannel = band + 2;
 
-		// Cancel outstanding commands
-		Soldier.issueStandbyCommand(rc, band);
-		rc.yield();
+		rc.broadcast(commandChannel, Comm.MOVE_TO_ENEMY_PASTR);
+		rc.broadcast(locationChannel, VectorActions.locToInt(location));
+	}
+	
+	public static void issueMoveToFriendlyPastrCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
+		int commandChannel = band + 1;
+		int locationChannel = band + 2;
 
-		rc.broadcast(commandChannel, Comm.MOVE_TO_PASTR);
+		rc.broadcast(commandChannel, Comm.MOVE_TO_FRIENDLY_PASTR);
 		rc.broadcast(locationChannel, VectorActions.locToInt(location));
 	}
 
 	public static void issueMoveToLocationCommand(RobotController rc, int band, MapLocation location) throws GameActionException {
 		int commandChannel = band + 1;
 		int locationChannel = band + 2;
-
-		// Cancel outstanding commands
-		Soldier.issueStandbyCommand(rc, band);
-		rc.yield();
 
 		rc.broadcast(commandChannel, Comm.MOVE_TO_LOCATION);
 		rc.broadcast(locationChannel, VectorActions.locToInt(location));
@@ -167,18 +184,11 @@ public class Soldier{
 		int commandChannel = band + 1;
 		int locationChannel = band + 2;
 
-		// Cancel outstanding commands
-		Soldier.issueStandbyCommand(rc, band);
-		rc.yield();
+		if(rc.readBroadcast(commandChannel) != Comm.WANDER) {
+			rc.broadcast(commandChannel, Comm.WANDER);
+		}
 
-		rc.broadcast(commandChannel, Comm.FOLLOW_THE_LEADER);
 		rc.broadcast(locationChannel, 10100+VectorActions.locToInt(rc.getLocation()));
-	}
-
-	public static void updateFollowMeCommand(RobotController rc, int band) throws GameActionException {
-		int locationChannel = band + 2;
-
-		rc.broadcast(locationChannel, 10100+ VectorActions.locToInt(rc.getLocation()));
 	}
 
 	public static void moveToLocation(RobotController rc, MapLocation location, Random random, boolean sneak) throws GameActionException {
@@ -186,17 +196,26 @@ public class Soldier{
 		BasicPathing.bug(rc, location, random, sneak);
 	}
 
-	public static void moveToRandomPastr(RobotController rc, Random random, int squadNumber, MapLocation[] pastrs) throws GameActionException {
+	public static void moveToRandomEnemyPastr(RobotController rc, Random random, int squadNumber, MapLocation[] pastrs) throws GameActionException {
 		MapLocation target = pastrs[random.nextInt(pastrs.length)];
-		Soldier.issueMoveToPastrCommand(rc, squadNumber, target);
+		Soldier.issueMoveToEnemyPastrCommand(rc, squadNumber, target);
 		Soldier.moveToLocation(rc, target, random, false);
 	}
+	
+	public static void moveToRandomFriendlyPastr(RobotController rc, Random random, int squadNumber, MapLocation[] pastrs) throws GameActionException {
+		MapLocation target = pastrs[random.nextInt(pastrs.length)];
+		Soldier.issueMoveToFriendlyPastrCommand(rc, squadNumber, target);
+		Soldier.moveToLocation(rc, target, random, true);
+	}
 
-	public static void verifyStandingPastrMove(RobotController rc, int band, Random random) throws GameActionException {
+	public static void verifyStandingPastrMove(RobotController rc, int band, Random random, boolean isEnemyPASTR) throws GameActionException {
 		MapLocation target = VectorActions.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
-		if(Soldier.isValidPastr(rc, target, rc.getTeam().opponent()) || Soldier.isValidPastr(rc, target, rc.getTeam())) {
+		if(isEnemyPASTR && Soldier.isValidPastr(rc, target, rc.getTeam().opponent())) {
 			// Continue move command to target
 			Soldier.moveToLocation(rc, target, random, false);
+		} else if(!isEnemyPASTR && Soldier.isValidPastr(rc, target, rc.getTeam())) {
+			// Continue sneak command to target
+			Soldier.moveToLocation(rc, target, random, true);
 		} else {
 			Soldier.issueStandbyCommand(rc, band);
 		}
@@ -230,7 +249,7 @@ public class Soldier{
 	public static boolean isLeaderAlive(RobotController rc, int band) throws GameActionException {
 		int vitalityChannel = band + Comm.VITALITY_SUBCHANNEL;
 		int roundsSinceLastVitalityBroadcast = Clock.getRoundNum() - rc.readBroadcast(vitalityChannel);
-		return roundsSinceLastVitalityBroadcast <= 5;
+		return roundsSinceLastVitalityBroadcast <= 2;
 	}
 
 	public static void sendDistressSignal(RobotController rc, int band) throws GameActionException {
@@ -250,13 +269,58 @@ public class Soldier{
 		// Clear distress signal
 		rc.broadcast(distressChannel, 0);
 
-		// Cancel all outstanding commands
-		Soldier.issueStandbyCommand(rc, band);
-		rc.yield();
-
 		// Move to location of distress
 		Soldier.issueMoveToLocationCommand(rc, band, locationOfDistress);
 		Soldier.moveToLocation(rc, locationOfDistress, random, false);
+	}
+	
+	public static boolean isHQCommand(RobotController rc, int band) throws GameActionException {
+		int HQCommandChannel = band + Comm.HQ_COMMAND_SUBCHANNEL;
+		return rc.readBroadcast(HQCommandChannel) != Comm.STANDBY;
+	}
+	
+	public static void followHQCommand(RobotController rc, int band) throws GameActionException {
+		int HQCommandChannel = band + Comm.HQ_COMMAND_SUBCHANNEL;
+		int HQCommand = rc.readBroadcast(HQCommandChannel);
+		int HQLocationChannel = band + Comm.HQ_LOCATION_SUBCHANNEL;
+
+		if(HQCommand == Comm.ALL_SQUADS_TO_LOCATION) {
+			MapLocation target = VectorActions.intToLoc(rc.readBroadcast(HQLocationChannel));
+			
+			Soldier.issueMoveToLocationCommand(rc, band, target);
+		}
+		
+		// Clear HQ Command
+		rc.broadcast(HQCommandChannel, Comm.STANDBY);
+		rc.broadcast(HQLocationChannel, 0);
+	}
+	
+	public static boolean isFormingSquad(RobotController rc, int band) throws GameActionException {
+		return rc.readBroadcast(Comm.RESPONDING_SOLDIER_CHANNEL) == band && rc.senseRobotCount() <= Soldier.squadSize;
+	}
+	
+	public static void updateLeaderLocation(RobotController rc, int band) throws GameActionException {
+		int commandChannel = band + Comm.COMMAND_SUBCHANNEL;
+		int leaderLocationChannel = band + Comm.LEADER_LOCATION_SUBCHANNEL;
+		int leaderLocation = VectorActions.locToInt(rc.getLocation());
+		
+		int command = rc.readBroadcast(commandChannel);
+		if(command == Comm.WANDER || command == Comm.MOVE_TO_FRIENDLY_PASTR) {
+			leaderLocation += 10100;
+		}
+		
+		rc.broadcast(leaderLocationChannel, leaderLocation);
+	}
+
+	public static void shouldIpanicOrRush(RobotController rc) throws GameActionException {
+		int panic = rc.readBroadcast(Comm.PANIC_CHANNEL);
+		if(panic>0){
+			RobotPlayer.panic = true;
+		}
+		int rush = rc.readBroadcast(Comm.RUSH_CHANNEL);
+		if(rush>0){
+			RobotPlayer.rush = true;
+		}
 	}
 
 }
