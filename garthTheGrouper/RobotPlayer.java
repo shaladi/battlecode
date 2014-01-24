@@ -2,7 +2,6 @@ package garthTheGrouper;
 
 import java.util.Random;
 
-import battlecode.common.Clock;
 import battlecode.common.Direction;
 import battlecode.common.GameActionException;
 import battlecode.common.MapLocation;
@@ -282,7 +281,10 @@ public class RobotPlayer{
 								} else {
 									Soldier.moveToRandomFriendlyPastr(rc, random, band, pastrsToMoveTo);
 								}
-							} else if(outstandingCommand == Comm.MOVE_TO_ENEMY_PASTR || outstandingCommand == Comm.MOVE_TO_FRIENDLY_PASTR){
+							} else if(outstandingCommand == Comm.MOVE_TO_ENEMY_PASTR) {
+								// Verify existing move command
+								Soldier.verifyStandingPastrMove(rc, band, random, isEnemyPASTR);
+							} else if(outstandingCommand == Comm.MOVE_TO_FRIENDLY_PASTR) {
 								// Verify existing move command
 								Soldier.verifyStandingPastrMove(rc, band, random, isEnemyPASTR);
 							} else if(outstandingCommand == Comm.MOVE_TO_LOCATION) {
