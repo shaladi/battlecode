@@ -1,0 +1,35 @@
+TODO:
+- Implement soldier/squad herding -- DONE
+- Choose enemy PASTR which is closest to our HQ -- DONE
+- Choose friendly PASTR which is closest to enemy HQ -- DONE
+
+Changelog:
+- rewrote Soldier.moveToEnemyPastr()
+- rewrote Soldier.moveToFriendlyPastr()
+- Created HERD command
+- moved issueSquadMoveCommand and isSquadActive methods to Comm
+- added issueHerdCommand, herdCows, isAtLocation, verifyStandingHerd
+
+Comm:
+- Added HERD command
+- Added HERD_ROOT_SUBCHANNEL
+- Added everything after isOnSubchannel method
+
+HQ:
+- removed isSquadActive
+- removed issueSquad...
+
+RobotPlayer:
+- added else if(command == Comm.HERD) condition to leader code
+- added herding condition to followers
+
+Soldier:
+- added herdingStatus enum
+- changed all subchannel numbers to Comm constants
+- added issueHerdCommand
+- made changes to both moveTo_____PASTR commands
+- changed body of verifyStandingPastrMove
+- added isAtLocation method
+- use isAtLocation at verifyStandingMove
+- added verifyStandingHerd
+- added everything from isAtLocation and below
