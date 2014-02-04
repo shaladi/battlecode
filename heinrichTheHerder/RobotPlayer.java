@@ -27,7 +27,8 @@ public class RobotPlayer{
 	static boolean bugLeft;
 	static boolean panic;
 	static boolean rush;
-	static int herderIndex = -1;
+	static int soldierIndex;
+	static boolean resetHerding = true;
 
 	public static void run(RobotController rc){
 
@@ -253,10 +254,11 @@ public class RobotPlayer{
 
 				// Soldier is tuned into a squad band
 				if(Comm.isOnSubchannel(tunedChannel, Comm.SIGN_IN_SUBCHANNEL)) {
-					if(rc.readBroadcast(tunedChannel) == 0) {
+				    soldierIndex = rc.readBroadcast(tunedChannel);
+				    rc.broadcast(tunedChannel, soldierIndex + 1);
+					if(soldierIndex == 0) {
 						// If this squad has no leader, become the leader
 						isLeader = true;
-						rc.broadcast(tunedChannel, 1);
 						tunedChannel = band + Comm.COMMAND_SUBCHANNEL;
 						rc.broadcast(tunedChannel, Comm.STANDBY);
 					} else {
@@ -358,12 +360,10 @@ public class RobotPlayer{
 						int channelData = rc.readBroadcast(band + Comm.LEADER_LOCATION_SUBCHANNEL);
 						int command = rc.readBroadcast(band + Comm.COMMAND_SUBCHANNEL);
 						if(command == Comm.HERD) {
-							if(herderIndex == -1) {
-								herderIndex = Soldier.getHerderIndex(rc, band);
-							}
-							Soldier.herdCows(rc, band, random, herderIndex);
+						    int herderIndex = soldierIndex - 1;
+							Soldier.herdCows(rc, band, random, herderIndex, resetHerding);
 						} else {
-							herderIndex = -1;
+							resetHerding = true;
 							// Follow the leader
 							if(channelData > 10100){
 								channelData -= 10100;

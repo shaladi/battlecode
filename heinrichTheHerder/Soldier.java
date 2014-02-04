@@ -390,8 +390,13 @@ public class Soldier{
 		}
 	}
 
-	public static void herdCows(RobotController rc, int band, Random random, int herderIndex) throws GameActionException {
+	public static void herdCows(RobotController rc, int band, Random random, int herderIndex, boolean resetHerding) throws GameActionException {
 		MapLocation pastrLocation = VectorActions.intToLoc(rc.readBroadcast(band + Comm.LOCATION_SUBCHANNEL));
+		if(resetHerding) {
+		    Soldier.currentHerdingStatus =  herdingStatus.init;
+		    RobotPlayer.resetHerding = false;
+		}
+		
 		if(herderIndex >= 0 && herderIndex <= 7) {
 			MapLocation startingLocation = pastrLocation.add(Direction.values()[herderIndex], 3);
 			TerrainTile tileAtStart = rc.senseTerrainTile(startingLocation);
@@ -435,23 +440,9 @@ public class Soldier{
 					Soldier.moveToLocation(rc, startingLocation, random, false);
 				}
 			}
-		} else if(herderIndex == 8){
+		} else {
 			// Sneak around PASTR
 			Soldier.moveToLocation(rc, pastrLocation, random, true);
-		} else {
-			System.out.println("Shouldn't be here");
 		}
-	}
-	
-	public static int getHerderIndex(RobotController rc, int band) throws GameActionException {
-		int herdingRootChannel = band + Comm.HERDER_ROOT_SUBCHANNEL;
-		for(int i = 0; i < 8; i++) {
-			if(rc.readBroadcast(herdingRootChannel + i) == 0) {
-				rc.broadcast(herdingRootChannel + i, 1);
-				Soldier.currentHerdingStatus = herdingStatus.init;
-				return i;
-			}
-		}
-		return 8;
 	}
 }
